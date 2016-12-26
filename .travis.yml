@@ -9,4 +9,17 @@ script:
   - ./scripts/feeds update -a
   - ./scripts/feeds install -a
   - make defconfig
-  - make V=s | egrep -i '(warn|error)'
+  - make
+  - gzip bin/targets/mvebu/generic/lede-mvebu-turris-omnia-rootfs.ext4
+
+deploy:
+  provider: releases
+  api_key:
+    secure: GeZAmE4A45ewzHJhj97cs0xxfmBtzsCo6MVcPVfVRRG5A7UTuplDvQfj4h/+TdXYed75t0dHgp5NPJLV/SUIRZa+eG6X7pMd4l93jwhLsB8bkE/wWUp89vlj+PIPjk/8PoXW43gyJjaK2Iuv0Cbyk5whkFN+BC0BnGVYhJfh0/QcMOHpt9srPlmfmX0oUP1wUR8ZI72UpmqrDcBmD++uDwBpQLabnJr8+U+B08KCOjoxe1v9QOvDw3CMNuifCstwigsfEMHDe25y6JcQQzOKKiD5mIgtMCqPUgh3fr3JNgs1ldZ7qJYPgUiE3BXU+w9OhWQmVQklJk8GVrsImbIs6mhBjEFv3ThjD1ogQaqXZvTVGJvesvCXEryl7TG/3Aqc7qdzZlhAI6Aaj9hs31oiWUX6aAAyLVvUgqK6VzoCWoJ2ZB7obbSSRFZ1rtQ7zuC7WZbLCdjG1x1UACul65xccz3gOdJQscFoOOpihPDxxGXKL2ZaUYW63fMI7v/28ITXste0HMs9TLET2lj5UNg7vapdXqxsRuaaFiLzp7CK6vWiWaaWCSpYKGOjkcY4xbRp+M6nigUmBjsMitQApMTpu9T70Nd6b1NvF2d/ZX9ICp5Y6WRr4oVX5HdiRS3jdw4CG15KEQG2qbo4CKUu5pqKKJInLTjTPsO7pmSZy3vZrBo=
+  file:
+    - $TRAVIS_BUILD_DIR/lede/bin/targets/mvebu/generic/lede-mvebu-turris-omnia-rootfs.ext4.gz
+    - $TRAVIS_BUILD_DIR/lede/bin/targets/mvebu/generic/lede-mvebu-turris-omnia.manifest
+    - $TRAVIS_BUILD_DIR/lede/bin/targets/mvebu/generic/sha256sums
+  skip_cleanup: true
+  on:
+    tags: true
