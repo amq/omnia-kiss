@@ -1,0 +1,10 @@
+language: cpp
+sudo: false
+
+cache: ccache
+
+script:
+  - git submodule update
+  - cp -r custom/* lede
+  - cd lede
+  - make V=s 2>&1 | grep -i error

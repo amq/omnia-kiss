@@ -1,0 +1,154 @@
+--- a/drivers/net/phy/mvsw61xx.c	2016-12-26 00:13:10.322013000 +0100
++++ b/drivers/net/phy/mvsw61xx.c	2016-12-26 00:16:50.546013000 +0100
+@@ -612,6 +612,102 @@
+ 	return mvsw61xx_update_state(dev);
+ }
+ 
++static int smi_wait_mask_raw(struct switch_dev *dev, int addr,
++		int reg, u16 mask, u16 val)
++{
++	int i = 100;
++	u16 r;
++
++	do {
++		r = sr16(dev, addr, reg);
++		if ((r & mask) == val)
++			return 0;
++	} while (--i > 0);
++
++	return -ETIMEDOUT;
++}
++
++static u16 smisr16(struct switch_dev *dev, int addr, int reg)
++{
++	int ret;
++	u16 ind_addr;
++
++	/* Indirect read: First, make sure switch is free */
++	ret=smi_wait_mask_raw(dev, MV_SWITCH_GLOBAL2,
++		MV_SWITCH_GLOBAL2_SMI_COMMAND, MV_INDIRECT_INPROGRESS, 0);
++
++	/* Load address and request read */
++	ind_addr = MV_INDIRECT_READ | (addr << MV_INDIRECT_ADDR_S) | reg;
++	sw16(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_COMMAND, ind_addr);
++
++	/* Wait until it's ready */
++	smi_wait_mask_raw(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_COMMAND,
++		MV_INDIRECT_INPROGRESS, 0);
++
++	/* Read the requested data */
++	return sr16(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_DATA);
++
++}
++
++static void smisw16(struct switch_dev *dev, int addr, int reg, u16 val)
++{
++	u16 ind_addr;
++
++        /* Indirect write: First, make sure switch is free */
++	smi_wait_mask_raw(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_COMMAND,
++		MV_INDIRECT_INPROGRESS, 0);
++
++        /* Load the data to be written */
++        sw16(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_DATA, val);
++
++        /* Wait again for switch to be free */
++	smi_wait_mask_raw(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_COMMAND,
++		MV_INDIRECT_INPROGRESS, 0);
++
++        /* Load address, and issue write command */
++        ind_addr = MV_INDIRECT_WRITE | (addr << MV_INDIRECT_ADDR_S) | reg;
++        sw16(dev, MV_SWITCH_GLOBAL2, MV_SWITCH_GLOBAL2_SMI_COMMAND, ind_addr);
++}
++
++static void mvsw6176_quirks(struct switch_dev *dev)
++{
++	int i;
++	u16 pagereg, copperreg, copperspecreg, reg;
++
++	for (i=0; i<=MV6176_MAX_PHY; i++) {
++		pagereg=smisr16(dev, PHY_ADDR(i, PHY_PAGE_REG));
++		pagereg&=~(PHY_PAGE_MASK);
++		smisw16(dev, PHY_ADDR(i, PHY_PAGE_REG), pagereg);
++
++		copperspecreg=smisr16(dev, PHY_ADDR(i, PHY_SPECCONTROL_REG));
++		copperspecreg&=~PHY_SPECCONTROL_PWR;
++		smisw16(dev, PHY_ADDR(i, PHY_SPECCONTROL_REG), copperspecreg);
++
++		copperreg=smisr16(dev, PHY_ADDR(i, PHY_CONTROL_REG));
++		copperreg&=~PHY_CONTROL_PWR;
++		smisw16(dev, PHY_ADDR(i, PHY_CONTROL_REG), copperreg);
++	}
++
++	/* Enable forwarding (STP mode) */
++	for (i = 0; i < dev->ports; i++) {
++		reg = sr16(dev, MV_PORTREG(CONTROL, i)) |
++			MV_PORTCTRL_FORWARDING;
++		sw16(dev, MV_PORTREG(CONTROL, i), reg);
++	}
++
++	/* Disable PHYDetect on CPU ports. */
++	for(i=5; i<=6; i++) {
++		reg = sr16(dev, MV_PORTREG(STATUS, i));
++		reg &= ~(MV_PORT_STATUS_PHYDETECT);
++		sw16(dev, MV_PORTREG(STATUS, i), reg);
++
++		// RGMII timing
++		reg = sr16(dev, MV_PORTREG(PHYCTL, i));
++		reg |= 0xc000;
++		sw16(dev, MV_PORTREG(PHYCTL, i), reg);
++	}
++}
++
+ static void mvsw61xx_enable_serdes(struct switch_dev *dev)
+ {
+ 	int bmcr = mvsw61xx_mdio_page_read(dev, MV_REG_FIBER_SERDES,
+@@ -695,6 +791,9 @@
+ 
+ 	mvsw61xx_update_state(dev);
+ 
++	/* Hack Hack Hack */
++	mvsw6176_quirks(dev);
++
+ 	/* Re-enable ports */
+ 	for (i = 0; i < dev->ports; i++) {
+ 		reg = sr16(dev, MV_PORTREG(CONTROL, i)) |
+@@ -909,6 +1008,9 @@
+ 	state->dev.ops = &mvsw61xx_ops;
+ 	state->dev.alias = dev_name(&pdev->dev);
+ 
++        if (state->model == MV_IDENT_VALUE_6176)
++                mvsw6176_quirks(&state->dev);
++
+ 	_mvsw61xx_reset(&state->dev, true);
+ 
+ 	err = device_create_file(&pdev->dev, &dev_attr_temp);
+--- a/drivers/net/phy/mvsw61xx.h	2016-12-26 00:17:05.618013000 +0100
++++ b/drivers/net/phy/mvsw61xx.h	2016-12-26 00:18:55.622013000 +0100
+@@ -63,6 +63,7 @@
+ };
+ #define MV_PORT_STATUS_SPEED_SHIFT	8
+ #define MV_PORT_STATUS_SPEED_MASK	(3 << 8)
++#define MV_PORT_STATUS_PHYDETECT	(1 << 12)
+ 
+ enum {
+ 	MV_PORTCTRL_DISABLED		= (0 << 0),
+@@ -238,6 +239,18 @@
+ #define MV_FDB_LO_MASK			0xf000
+ #define MV_FDB_HI_SHIFT			4
+ #define MV_FDB_LO_SHIFT			12
++#define PHY_ADDR(_n, _type)		_n, _type
++#define PHY_CONTROL_REG			0
++#define PHY_SPECCONTROL_REG		16
++#define PHY_PAGE_REG			22
++
++#define PHY_PAGE_MASK			0xFF
++#define PHY_CONTROL_PWR			(1<<11)
++#define PHY_SPECCONTROL_PWR		(1<<2)
++
++#define MV_SWITCH_GLOBAL2_SMI_COMMAND 0x18
++#define MV_SWITCH_GLOBAL2_SMI_DATA 0x19
++#define MV6176_MAX_PHY 4
+ 
+ /* Marvell Specific PHY register */
+ #define MII_MV_SPEC_CTRL		16

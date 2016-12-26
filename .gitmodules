@@ -1,0 +1,3 @@
+[submodule "lede"]
+	path = lede
+	url = https://github.com/lede-project/source.git
