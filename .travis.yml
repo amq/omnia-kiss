@@ -4,9 +4,8 @@ sudo: false
 cache: ccache
 
 script:
-  - cp -rf custom/* lede
+  - cp -r custom lede
   - cd lede
-  - cat .config
   - ./scripts/feeds update -a
   - ./scripts/feeds install -a
   - make defconfig
