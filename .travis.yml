@@ -9,7 +9,7 @@ script:
   - ./scripts/feeds update -a
   - ./scripts/feeds install -a
   - make defconfig
-  - make
+  - travis_wait 30 make
   - gzip bin/targets/mvebu/generic/lede-mvebu-turris-omnia-rootfs.ext4
 
 deploy:
