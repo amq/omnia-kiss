@@ -9,7 +9,7 @@ script:
   - ./scripts/feeds update -a > /dev/null 2>&1
   - ./scripts/feeds install -a > /dev/null 2>&1
   - make defconfig > /dev/null 2>&1
-  - make V=s 2>&1 | tee build.log | grep -i error
+  - make V=s 2>&1 | tee build.log | grep -i error | cut -c -200
   - gzip bin/targets/mvebu/generic/lede-mvebu-turris-omnia-rootfs.ext4
 
 deploy:
