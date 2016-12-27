@@ -4,7 +4,7 @@ sudo: false
 cache: ccache
 
 script:
-  - \cp -r custom lede
+  - rsync -a custom/ lede/
   - cd lede
   - ./scripts/feeds update -a
   - ./scripts/feeds install -a
